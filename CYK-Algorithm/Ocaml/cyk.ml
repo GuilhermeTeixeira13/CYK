@@ -1,0 +1,316 @@
+open Printf;;
+
+(* 
+  This function will give us the index of the element "e" in the list "l".
+   
+  Src: https://stackoverflow.com/questions/31279920/finding-an-item-in-a-list-and-returning-its-index-ocaml 
+*)
+let index_of e l = 
+  let rec index_rec i = function
+    | [] -> -1
+    | hd::tl -> if hd = e then i else index_rec (i+1) tl
+  in index_rec 0 l;;
+
+(* 
+  This function will verify if element "e" is present in the list "l" and 
+  will return true or false, respectively.
+*)
+let element_in_list e l = if (index_of e l <> -1) then true else false;;
+
+(* 
+  This function will verify if the string "s1" contains the string "s2" and
+  will return true or false, respectively.
+
+  Src: https://stackoverflow.com/questions/11193783/ocaml-strings-and-substrings 
+*)
+let contains (s1:string) (s2:string) =
+  try
+    ignore (Str.search_forward (Str.regexp_string s2) s1 0); 
+    true
+  with Not_found -> false;;
+
+(* 
+  This fucntion will read num_rules rules in the formato "N -> a1 a2 a3 ... an"
+  and return a string array array with those rules.
+  Example for (read_rules 2):
+  A -> B C
+  B -> A A 
+  string array array = [|[|"A"; "BC"|]; [|"B"; "AA"|]|]
+*)
+let read_rules (num_rules:int) = 
+  let rules_mtx = ref [] in
+  for i = 0 to num_rules - 1 do
+    let line = Str.(global_replace (regexp "[ ->]") "" (read_line ())) in
+    let rule_father = String.sub line 0 1 in
+    let rule_son = String.sub line 1 ((String.length line) - 1) in 
+    let rule = [rule_father; rule_son] in
+    rules_mtx := List.append !rules_mtx [rule];
+  done;
+  Array.of_list (List.map Array.of_list !rules_mtx);;
+
+(*
+  This function will create a lower triangular matrix of size "size" and the type:
+  'a list array array
+*)
+let create_triangular_mtx (size: int) = Array.init size (fun i -> Array.make (i+1) []);;
+
+(*
+  This function will invert the position of a "fictional" line to his real value.
+  Example:
+  If I want to access to the posiiton of the fictional line 3 represented in m1, all I have
+  to do is ( invert_lines 4 3 ) = 4 - 3 - 1 = 0. So the fictional line 3 corresponds 
+  to the line in the position 0.
+*)
+let invert_lines (size:int) (line:int) = size - line - 1;;
+ 
+(*
+  This function will verify if the "prod_son" belongs to some rule's son
+  and if that rule's father isn't already in that cell. If this conditions are
+  both true, then it fills the the mtx.(l).(c) with that rule's father.
+  Example:
+  rules -> [|[|'A'; 'BC'|];[|'B'; 'AA'|]|]
+  mtx -> [|[|[]||] ; [[|[]; []||] ; [[|[]; []; []||]|]
+  fill_cell mtx 3 2 2 B rules;
+  mtx -> [|[|[]||]v; [[|[]; []||] ; [[|[]; []; ['A']||]|]
+*)
+let fill_cell (mtx: string list array array) (mtx_size: int) (line_inv:int) (c:int) (prod_son: string) (rules: string array array) =
+  for rule = 0 to (Array.length rules) - 1 do
+    let l = invert_lines mtx_size line_inv in
+    let rule_father = rules.(rule).(0) in
+    let rule_son = rules.(rule).(1) in
+    let prod_son_belong_to_rule = contains rule_son prod_son in
+    let rule_father_not_in_cell = not (element_in_list rule_father mtx.(l).(c)) in
+    if (prod_son_belong_to_rule && rule_father_not_in_cell) then ( mtx.(l).(c) <- mtx.(l).(c) @ [rule_father];)
+  done;;
+
+(*
+  This function will give us all the substrings from s, with leghth k.
+  Example: s = "abaab", k = 3 ->  [|"aba";"baa";"aab"|]
+*)
+let extract_k_length_substrings (s:string) (k:int) =
+  let res = ref [] in
+  for i=0 to (String.length s) - k do
+    res := List.append !res [String.sub s i k]
+  done;
+  Array.of_list !res;;
+
+(* 
+  This function will give calculate the cartesian product between to lists and save them in a array of tuples.
+  Example: 
+  l1 = ["a";"b"], l2 = ["b";"c"]
+  -> cartesian_product l1 l2 =  [|("a", "b"); ("a", "c"); ("b", "b"); ("b", "c")|]
+   
+  Src: https://stackoverflow.com/questions/10893521/how-to-take-product-of-two-list-in-ocaml 
+*)
+let cartesian_product l l' = Array.of_list (List.concat (List.map (fun e -> List.map (fun e' -> (e,e')) l') l));;
+
+(*
+  This function will give us all the possible pairs of substrings of s.
+  Example: 
+  s = "abaab"
+  -> extract_substring_combos s = [|("a","baab");("ab";"aab");("aba";"ab");("abaa","b")|]
+*)
+let extract_substring_combos (s:string) = 
+  let res = ref [] in
+  for i=1 to (String.length s) - 1 do
+    res := List.append !res [String.sub s 0 i, String.sub s i ((String.length s)-i)]
+  done;
+  Array.of_list !res;;
+
+(*
+  This function will search for the generators of a substring of w, called s.
+  Example:
+  w = "aba"
+  s = "ba"
+  mtx -> [|[|[]||] ; [[|[]; ["S";"A"]||] ; [[|[]; []; ['A']||]|]
+  -> search_for_str_generators mtx 3 s w = ["S";"A"]
+*)
+let search_for_str_generators (mtx:string list array array) (mtx_size:int) (s:string) (w:string) =
+  let len_s = String.length s in
+  let l = mtx_size - len_s in
+  let c = index_of s (Array.to_list (extract_k_length_substrings w (len_s))) in
+  mtx.(l).(c);; 
+  
+(* 
+  This function will handle the output of the program.
+  (word generated by grammmar ("YES"/"NO") + lower triangular matrix) 
+*)
+let print_output (mtx: string list array array) (w:string) =
+  if element_in_list "S" mtx.(0).(0) then printf "YES\n" else printf "NO\n";
+  for l = 0 to (String.length w) - 1 do
+    for c = 0 to (Array.length mtx.(l)) - 1 do
+      let cell_sorted = List.sort compare mtx.(l).(c) in
+      if (List.length cell_sorted) > 0 then (
+        List.iter (function word -> 
+          if String.equal word (List.hd (List.rev cell_sorted)) then (printf "%s\t\t" word) else (printf "%s " word)
+        ) cell_sorted;
+      ) else (printf "\t\t")
+    done;
+    printf "\n";
+  done;
+  String.iter (function c -> printf "%c\t\t" c) w;
+  printf "\n";;
+
+(* 
+  This function will gradually create and fill the mtx with the 
+  values extracted by the CYK alhorithm, considering the rules.
+*)
+let solve (w:string) (rules: string array array) =
+  let n = String.length w in
+  let mtx = create_triangular_mtx(n) in
+
+  (* Fills the bottom line *)
+  String.iteri (fun i c -> fill_cell mtx n 0 i (String.make 1 c) rules) w;
+
+  (* Fills all the others *)
+  for line = n-2 downto 0 do
+    let interspersed_substrings = extract_k_length_substrings w (invert_lines n (line-1)) in
+    Array.iteri (fun pos word -> 
+      let substring_combos = extract_substring_combos word in
+      Array.iter (fun combo -> 
+        let x = search_for_str_generators mtx n (fst combo) w 
+        and y = search_for_str_generators mtx n (snd combo) w in
+        let cart_prod_xy = cartesian_product x y in
+        for pair_pos = 0 to (Array.length cart_prod_xy) - 1 do
+          let element = (fst cart_prod_xy.(pair_pos)) ^ (snd cart_prod_xy.(pair_pos)) in
+          fill_cell mtx n (invert_lines n line) pos element rules;
+        done;
+      ) substring_combos;
+    ) interspersed_substrings;
+  done;
+  print_output mtx w;;
+
+(* ------------ MAIN ------------ *)
+ (* read inputs and solve problem*)
+
+let word_to_recognize = read_line ();;
+let m = read_int();;
+let r  = read_rules(m);;
+solve word_to_recognize r;;
+
+(*
+WORKING EXAMPLE 
+   
+INPUT:
+aabaa
+4
+S -> A B
+S -> b
+A -> a
+B -> S A
+
+create_triangular_mtx:
+Mtx = [[[]], [[], []], [[], [], []], [[], [], [], []], [[], [], [], [], []]]
+
+Fills bottom line:
+Mtx = [[[]], [[], []], [[], [], []], [[], [], [], []], [['A'], ['A'], ['S'], ['A'], ['A']]]
+
+For l = 3: 
+  interspersed_substrings: ['aa', 'ab', 'ba', 'aa']
+    For word = aa: 
+      substring_combos= [('a', 'a')]: 
+      For combo = ('a', 'a'): 
+        CartesianProd = [('A', 'A')] = ['A'] X ['A']
+          For element = AA: 
+            Mtx stays the same.
+    For word = ab: 
+      substring_combos= [('a', 'b')]: 
+      For combo = ('a', 'b'): 
+        CartesianProd = [('A', 'S')] = ['A'] X ['S']
+          For element = AS: 
+            Mtx stays the same.
+    For word = ba: 
+      substring_combos= [('b', 'a')]: 
+      For combo = ('b', 'a'): 
+        CartesianProd = [('S', 'A')] = ['S'] X ['A']
+          For element = SA: 
+            Mtx = [[[]], [[], []], [[], [], []], [[], [], ['B'], []], [['A'], ['A'], ['S'], ['A'], ['A']]]
+    For word = aa: 
+      substring_combos= [('a', 'a')]: 
+      For combo = ('a', 'a'): 
+        CartesianProd = [('A', 'A')] = ['A'] X ['A']
+          For element = AA: 
+            Mtx stays the same.
+For l = 2: 
+  interspersed_substrings: ['aab', 'aba', 'baa']
+    For word = aab: 
+      substring_combos= [('a', 'ab'), ('aa', 'b')]: 
+      For combo = ('a', 'ab'): 
+        CartesianProd = [] = ['A'] X []
+        Mtx stays the same.
+      For combo = ('aa', 'b'): 
+        CartesianProd = [] = [] X ['S']
+        Mtx stays the same.
+    For word = aba: 
+      substring_combos= [('a', 'ba'), ('ab', 'a')]: 
+      For combo = ('a', 'ba'): 
+        CartesianProd = [('A', B')] = ['A'] X ['B']
+          For element = AB: 
+            Mtx = [[[]], [[], []], [[], ['S'], []], [[], [], ['B'], []], [['A'], ['A'], ['S'], ['A'], ['A']]]
+      For combo = ('ab', 'a'): 
+        CartesianProd = [] = [] X ['A']
+        Mtx stays the same.
+    For word = baa: 
+      substring_combos= [('b', 'aa'), ('ba', 'a')]: 
+      For combo = ('b', 'aa'): 
+        CartesianProd = [] = ['S'] X []
+        Mtx stays the same.
+      For combo = ('ba', 'a'): 
+        CartesianProd = [('B', 'A')] = ['B'] X ['A']
+          For element = BA: 
+            Mtx stays the same.
+For l = 1: 
+  interspersed_substrings: ['aaba', 'abaa']
+    For word = aaba: 
+      substring_combos= [('a', 'aba'), ('aa', 'ba'), ('aab', 'a')]: 
+      For combo = ('a', 'aba'): 
+        CartesianProd = [('A', 'S')] = ['A'] X ['S']
+          For element = AS:
+            Mtx stays the same. 
+      For combo = ('aa', 'ba'): 
+        CartesianProd = [] = [] X ['B']
+        Mtx stays the same.
+      For combo = ('aab', 'a'): 
+        CartesianProd = [] = [] X ['A']
+        Mtx stays the same.
+    For word = abaa: 
+      substring_combos= [('a', 'baa'), ('ab', 'aa'), ('aba', 'a')]: 
+      For combo = ('a', 'baa'): 
+        CartesianProd = [] = ['A'] X []
+        Mtx stays the same.
+      For combo = ('ab', 'aa'): 
+        CartesianProd = [] = [] X []
+        Mtx stays the same.
+      For combo = ('aba', 'a'): 
+        CartesianProd = [('S', 'A')] = ['S'] X ['A']
+          For element = SA: 
+            Mtx = [[[]], [[], ['B']], [[], ['S'], []], [[], [], ['B'], []], [['A'], ['A'], ['S'], ['A'], ['A']]]
+For l = 0: 
+  interspersed_substrings: ['aabaa']
+    For word = aabaa: 
+      substring_combos= [('a', 'abaa'), ('aa', 'baa'), ('aab', 'aa'), ('aaba', 'a')]: 
+      For combo = ('a', 'abaa'): 
+        CartesianProd = [('A', 'B')] = ['A'] X ['B']
+          For element = AB: 
+            Mtx = [[['S']], [[], ['B']], [[], ['S'], []], [[], [], ['B'], []], [['A'], ['A'], ['S'], ['A'], ['A']]]
+      For combo = ('aa', 'baa'): 
+        CartesianProd = [] = [] X []
+        Mtx stays the same.
+      For combo = ('aab', 'aa'): 
+        CartesianProd = [] = [] X []
+        Mtx stays the same.
+      For combo = ('aaba', 'a'): 
+        CartesianProd = [] = [] X ['A']
+        Mtx stays the same.
+
+  Final mtx = [[['S']], [[], ['B']], [[], ['S'], []], [[], [], ['B'], []], [['A'], ['A'], ['S'], ['A'], ['A']]]
+ 
+  OUTPUT:
+  YES
+  S		
+      B		
+      S				
+          B				
+  A		A		S		A		A		
+  a		a		b		a		a
+*)
